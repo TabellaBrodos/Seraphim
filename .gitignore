@@ -38,3 +38,9 @@ models/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Librerie e programmi compilati
+*.dll
+*.exe
+*.lib
+*.obj
