@@ -1,0 +1,40 @@
+# Python: ambienti virtuali e cache
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test, strumenti e cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Modelli e file di grandi dimensioni
+models/
+*.gguf
+*.ggml
+*.safetensors
+*.pt
+*.pth
+*.bin
+
+# Log e file temporanei
+*.log
+*.tmp
+*.bak
+
+# Configurazioni locali e segreti
+.env
+.env.*
+!.env.example
+
+# Editor e sistema operativo
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
