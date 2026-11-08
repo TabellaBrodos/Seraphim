@@ -59,3 +59,6 @@ separatamente seguendo le istruzioni del progetto.
 
 Non caricare password, token API, chiavi private o file `.env`.
 Controlla sempre `git status` prima del commit.
+
+
+llama-server -m models/Qwen3VL-4B-Instruct-Q4_K_M.gguf --mmproj models/mmproj-Qwen3VL-4B-Instruct-F16.gguf -ngl 99 --flash-attn on --port 8080 --ctx-size 4096
