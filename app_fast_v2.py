@@ -6,11 +6,16 @@ from functools import lru_cache
 
 import cv2
 import requests
-from duckduckgo_search import DDGS
 
-SERVER_URL = "http://localhost:8080/v1/chat/completions"
+try:
+    from ddgs import DDGS
+except ImportError:
+    from duckduckgo_search import DDGS
+
+
+SERVER_URL = "http://127.0.0.1:8080/v1/chat/completions"
 IMAGE_SIZE = (336, 252)
-JPEG_QUALITY = 60
+JPEG_QUALITY = 70
 REQUEST_TIMEOUT = 60
 MAX_TURNS = 5
 
@@ -19,6 +24,8 @@ frame_lock = threading.Lock()
 current_frame = None
 
 session = requests.Session()
+
+session.trust_env = False
 
 SYSTEM_PROMPT = (
     "Sei un assistente virtuale amichevole e alla mano, parli in modo informale "
@@ -44,13 +51,16 @@ WEB_KEYWORDS = (
 def webcam_loop():
     global current_frame
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, IMAGE_SIZE[0])
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, IMAGE_SIZE[1])
 
     if not cap.isOpened():
         print("Errore: impossibile aprire la webcam.")
         stop_event.set()
         return
+
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, IMAGE_SIZE[0])
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, IMAGE_SIZE[1])
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     while not stop_event.is_set():
         ret, frame = cap.read()
@@ -70,8 +80,10 @@ def webcam_loop():
 def web_search(query):
     try:
         print("[IA]: cerco su internet...")
-        with DDGS() as ddgs:
-            results = [r.get("body", "") for r in ddgs.text(query, max_results=3)]
+        with DDGS(timeout=8) as ddgs:
+            results = [
+                r.get("body", "")[:300] for r in ddgs.text(query, max_results=3)
+            ]
         results = [r.strip() for r in results if r and r.strip()]
         if results:
             return "Informazioni dal web:\n" + "\n".join(results)
@@ -102,7 +114,10 @@ def stream_answer(messages):
         "max_tokens": 95,
         "temperature": 0.3,
         "stream": True,
+        
+        "cache_prompt": True,
     }
+    t0 = time.time()
     response = session.post(
         SERVER_URL, json=payload, stream=True, timeout=REQUEST_TIMEOUT
     )
@@ -113,8 +128,6 @@ def stream_answer(messages):
     print("\n[Risposta IA]:\n", end="", flush=True)
     full_text = ""
     token_count = 0
-    t0 = time.time()
-    buffer = ""
     for line in response.iter_lines():
         if not line:
             continue
@@ -129,18 +142,13 @@ def stream_answer(messages):
             delta = (
                 chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
             )
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError, IndexError):
             continue
         if not delta:
             continue
-        buffer += delta
         full_text += delta
         token_count += 1
-        if len(buffer) >= 12 or "\n" in buffer:
-            print(buffer, end="", flush=True)
-            buffer = ""
-    if buffer:
-        print(buffer, end="", flush=True)
+        print(delta, end="", flush=True)
     t1 = time.time()
     if token_count == 0 and not full_text:
         print("(nessun token ricevuto)")
@@ -149,6 +157,9 @@ def stream_answer(messages):
 
 
 def encode_frame(frame):
+    
+    if frame.shape[1] != IMAGE_SIZE[0] or frame.shape[0] != IMAGE_SIZE[1]:
+        frame = cv2.resize(frame, IMAGE_SIZE, interpolation=cv2.INTER_AREA)
     ok, buffer = cv2.imencode(
         ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY]
     )
@@ -222,7 +233,16 @@ def main():
 
             messages_history.append({"role": "user", "content": user_content_full})
 
-            full_output = stream_answer(messages_history)
+            try:
+                full_output = stream_answer(messages_history)
+            except requests.RequestException as exc:
+                print(f"\nErrore di connessione al server: {exc}\n")
+                full_output = ""
+
+            if not full_output:
+                
+                messages_history.pop()
+                continue
 
             messages_history[-1] = {"role": "user", "content": slim_text}
             messages_history.append({"role": "assistant", "content": full_output})
